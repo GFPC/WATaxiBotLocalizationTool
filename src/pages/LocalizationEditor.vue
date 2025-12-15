@@ -20,7 +20,7 @@
           <div class="stat-item">
             <label>Выбрана фраза</label>
             <div class="stat-value truncated">
-              {{ activeKey || 'Нет' }}
+              {{ activeKey || '-' }}
             </div>
           </div>
           <div class="stat-item">
@@ -56,22 +56,33 @@
         </div>
         <div class="card-content scrollable">
           <div class="phrases-list">
-            <div
-                v-for="phrase in filteredPhrases"
-                :key="phrase.key"
-                :class="[
-                'phrase-item',
-                activeKey === phrase.key ? 'phrase-item-active' : ''
-              ]"
-                @click="selectPhrase(phrase.key)"
-            >
-              <div class="phrase-key">{{ phrase.key }}</div>
-              <div class="phrase-preview">
-                {{ truncateText(phrase.value) }}
+            <div v-if="filteredPhrases.length === 0" class="no-phrases-message">
+              <div class="message-icon">📋</div>
+              <div class="message-title">Фраз не найдено</div>
+              <div class="message-description">
+                Вставьте исходный JSON в редактор ниже или добавьте новую фразу
               </div>
             </div>
+
+            <template v-else>
+              <div
+                  v-for="phrase in filteredPhrases"
+                  :key="phrase.key"
+                  :class="[
+          'phrase-item',
+          activeKey === phrase.key ? 'phrase-item-active' : ''
+        ]"
+                  @click="selectPhrase(phrase.key)"
+              >
+                <div class="phrase-key">{{ phrase.key }}</div>
+                <div class="phrase-preview">
+                  {{ truncateText(phrase.value) }}
+                </div>
+              </div>
+            </template>
           </div>
         </div>
+
       </div>
 
       <!-- Центральная панель - редактор -->
@@ -275,12 +286,6 @@ const props = defineProps({
   initialData: {
     type: Object,
     default: () => ({
-      "welcome": "🚖 Добро пожаловать в бота для заказа такси!\nДля начала вам необходимо согласиться с условиями использования данного сервиса.",
-      "sendFullName": "📝 Введите свое имя",
-      "sendRefCode": "🎉 Отлично! Теперь введите реферальный код. Если его нет, то введите ( *0* )",
-      "registrationError": "❌ Ошибка регистрации: %error%. Попробуйте позже.",
-      "registrationSuccessful": "✅ Вы успешно зарегистрировались! Выберите действие из списка ниже.\nСоздать заказ - введите ( *0* )\nНастройки - введите ( *1* )",
-      "collectionTo": "📍 Введите адрес отправления"
     })
   }
 })
@@ -1339,5 +1344,35 @@ watch(autoFormat, (newVal) => {
 .whatsapp-preview em {
   font-style: italic;
   color: #1a1a1a;
+}
+
+.no-phrases-message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  text-align: center;
+  color: #6b7280;
+  padding: 20px;
+}
+
+.message-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.message-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: #374151;
+}
+
+.message-description {
+  font-size: 14px;
+  line-height: 1.5;
+  max-width: 300px;
 }
 </style>
