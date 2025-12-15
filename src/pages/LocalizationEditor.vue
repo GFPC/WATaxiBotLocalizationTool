@@ -317,7 +317,7 @@ const phrasesArray = computed(() => {
   return Object.entries(phrases.value).map(([key, value]) => ({
     key,
     value,
-    text: convertNewlines(value)
+    text: value.replace(/\\n/g, '\n') // Простая замена для отображения
   }))
 })
 
@@ -336,20 +336,22 @@ const filteredPhrases = computed(() => {
 const currentText = computed({
   get() {
     if (activeKey.value && phrases.value[activeKey.value]) {
-      return convertNewlines(phrases.value[activeKey.value])
+      // Просто заменяем \n на переносы строк для textarea
+      return phrases.value[activeKey.value].replace(/\\n/g, '\n')
     }
     return ''
   },
   set(value) {
     if (activeKey.value) {
-      phrases.value[activeKey.value] = convertToNewlines(value)
-      updateJsonText() // Автоматическое обновление JSON
+      // Заменяем переносы строк на \n для хранения
+      phrases.value[activeKey.value] = value.replace(/\n/g, '\\n')
+      updateJsonText()
     }
   }
 })
 
 const currentPreview = computed(() => {
-  return renderWhatsAppPreview(convertNewlines(currentText.value))
+  return renderWhatsAppPreview(currentText.value) // currentText уже с переносами
 })
 
 const isInitialData = computed(() => {
@@ -357,18 +359,6 @@ const isInitialData = computed(() => {
 })
 
 // Методы
-const convertNewlines = (text) => {
-  if (!text) return ''
-  // Просто заменяем \n на перенос строки для отображения в textarea
-  return text.replace(/\\n/g, '\n')
-}
-
-const convertToNewlines = (text) => {
-  if (!text) return ''
-  // Просто заменяем переносы строк на \n для хранения
-  return text.replace(/\n/g, '\\n')
-}
-
 const truncateText = (text) => {
   if (!text) return ''
   const plainText = text.replace(/\\n/g, ' ')
@@ -389,23 +379,25 @@ const getTextAreaRows = () => {
 
 const updateJsonText = () => {
   try {
-    // Создаем копию с правильными \n
-    const jsonReadyPhrases = {}
+    // Создаем временный объект для JSON.stringify
+    const tempPhrases = {}
     Object.entries(phrases.value).forEach(([key, value]) => {
       if (typeof value === 'string') {
-        // Заменяем \n на специальный маркер перед JSON.stringify
-        jsonReadyPhrases[key] = value.replace(/\\n/g, '[[NEWLINE]]')
+        // Заменяем \n на специальный маркер
+        tempPhrases[key] = value.replace(/\\n/g, '___NEWLINE___')
       } else {
-        jsonReadyPhrases[key] = value
+        tempPhrases[key] = value
       }
     })
 
     // Создаем JSON
-    let json = JSON.stringify(jsonReadyPhrases, null, autoFormat.value ? 2 : 0)
+    let json = JSON.stringify(tempPhrases, null, autoFormat.value ? 2 : 0)
 
     // Восстанавливаем \n из маркера
-    json = json.replace(/"\[\[NEWLINE\]\]"/g, '"\\\\n"')
-        .replace(/\[\[NEWLINE\]\]/g, '\\\\n')
+    json = json.replace(/"___NEWLINE___"/g, '"\\n"')
+
+    // Убираем двойные маркеры, если они есть
+    json = json.replace(/___NEWLINE___/g, '\\n')
 
     jsonText.value = json
     lastValidJson.value = json
@@ -438,22 +430,17 @@ const handleTextChange = () => {
 
 const handleJsonChange = () => {
   try {
-    // Заменяем \\n на маркер перед парсингом
-    const jsonWithMarkers = jsonText.value.replace(/\\\\n/g, '[[NEWLINE]]')
-
-    const parsed = JSON.parse(jsonWithMarkers)
-
-    const processedPhrases = {}
-    Object.entries(parsed).forEach(([key, value]) => {
+    const reviver = (key, value) => {
       if (typeof value === 'string') {
-        // Восстанавливаем \n из маркера
-        processedPhrases[key] = value.replace(/\[\[NEWLINE\]\]/g, '\\n')
-      } else {
-        processedPhrases[key] = value
+        // Восстанавливаем \n из \\n
+        return value.replace(/\\\\n/g, '\\n')
       }
-    })
+      return value
+    }
 
-    phrases.value = processedPhrases
+    const parsed = JSON.parse(jsonText.value, reviver)
+
+    phrases.value = parsed
     isJsonValid.value = true
     jsonStatusMessage.value = `JSON валиден. Фраз: ${Object.keys(parsed).length}`
 
