@@ -359,14 +359,18 @@ const isInitialData = computed(() => {
 // Методы
 const convertNewlines = (text) => {
   if (!text) return ''
-  // Только заменяем \n на переносы строк, кавычки оставляем как есть
-  return text.replace(/\\n/g, '\n')
+
+  // Заменяем только \n, а не \\n
+  // Используем отрицательный lookbehind
+  return text.replace(/(?<!\\)\\n/g, '\n')
 }
 
 const convertToNewlines = (text) => {
   if (!text) return ''
-  // Только переносы строк, кавычки НЕ трогаем
-  return text.replace(/\n/g, '\\n')
+
+  // Заменяем только реальные переносы строк, а не уже экранированные \n
+  // Используем lookbehind чтобы не заменять уже экранированные \n
+  return text.replace(/(?<!\\)\n/g, '\\n')
 }
 
 const truncateText = (text) => {
