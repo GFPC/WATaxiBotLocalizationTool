@@ -365,7 +365,7 @@ const convertNewlines = (text) => {
 
 const convertToNewlines = (text) => {
   if (!text) return ''
-  // Только переносы строк в \n, кавычки НЕ экранируем здесь
+  // Только переносы строк, кавычки НЕ трогаем
   return text.replace(/\n/g, '\\n')
 }
 
@@ -394,9 +394,13 @@ const updateJsonText = () => {
       escapedPhrases[key] = escapeForJson(value)
     })
 
+    // JSON.stringify сам экранирует кавычки и специальные символы
     const json = JSON.stringify(escapedPhrases, null, autoFormat.value ? 2 : 0)
-    // Убираем двойные экранирования \n
-    const cleanJson = json.replace(/\\\\n/g, '\\n')
+
+    // После stringify нужно восстановить \n
+    const cleanJson = json.replace(/\\n/g, '\\\\n') // Делаем \\n для отображения
+        .replace(/"\\\\n"/g, '"\\n"') // Но внутри строк оставляем \n
+
     jsonText.value = cleanJson
     lastValidJson.value = cleanJson
     isJsonValid.value = true
@@ -410,11 +414,14 @@ const updateJsonText = () => {
 const escapeForJson = (value) => {
   if (typeof value !== 'string') return value
 
-  // Экранируем кавычки для JSON
+  // В value уже могут быть экранированные кавычки из редактора (когда пользователь ввел \")
+  // JSON.stringify сам экранирует кавычки, поэтому нам нужно подготовить строку
+
+  // 1. Сначала заменяем двойные обратные слеши на одиночные
+  // 2. JSON.stringify сам позаботится об экранировании
   return value
-      .replace(/\\"/g, '"') // Сначала убираем существующие экранирования
-      .replace(/"/g, '\\"') // Экранируем кавычки для JSON
-      .replace(/\n/g, '\\n') // Сохраняем переносы строк
+      .replace(/\\\\/g, '\\') // Убираем двойные обратные слеши
+      .replace(/\\n/g, '\n')  // Временно убираем \n
 }
 
 const handleTextChange = () => {
@@ -425,16 +432,15 @@ const handleTextChange = () => {
 
 const handleJsonChange = () => {
   try {
+    // JSON.parse сам уберет экранирование
     const parsed = JSON.parse(jsonText.value)
 
-    // При парсинге JSON, \n автоматически преобразуется в перенос строки
-    // Кавычки уже экранированы в JSON
     const processedPhrases = {}
     Object.entries(parsed).forEach(([key, value]) => {
       if (typeof value === 'string') {
-        processedPhrases[key] = value
-            .replace(/\n/g, '\\n') // Сохраняем переносы строк
-        // Кавычки НЕ трогаем - они уже экранированы в JSON
+        // После парсинга JSON, \n уже как перенос строки
+        // Нужно сохранить его как строку с \n
+        processedPhrases[key] = value.replace(/\n/g, '\\n')
       } else {
         processedPhrases[key] = value
       }
