@@ -359,18 +359,14 @@ const isInitialData = computed(() => {
 // Методы
 const convertNewlines = (text) => {
   if (!text) return ''
-
-  // Заменяем только \n, а не \\n
-  // Используем отрицательный lookbehind
-  return text.replace(/(?<!\\)\\n/g, '\n')
+  // Просто заменяем \n на перенос строки для отображения в textarea
+  return text.replace(/\\n/g, '\n')
 }
 
 const convertToNewlines = (text) => {
   if (!text) return ''
-
-  // Заменяем только реальные переносы строк, а не уже экранированные \n
-  // Используем lookbehind чтобы не заменять уже экранированные \n
-  return text.replace(/(?<!\\)\n/g, '\\n')
+  // Просто заменяем переносы строк на \n для хранения
+  return text.replace(/\n/g, '\\n')
 }
 
 const truncateText = (text) => {
