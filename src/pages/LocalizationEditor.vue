@@ -389,20 +389,26 @@ const getTextAreaRows = () => {
 
 const updateJsonText = () => {
   try {
-    const escapedPhrases = {}
+    // Создаем копию с правильными \n
+    const jsonReadyPhrases = {}
     Object.entries(phrases.value).forEach(([key, value]) => {
-      escapedPhrases[key] = escapeForJson(value)
+      if (typeof value === 'string') {
+        // Заменяем \n на специальный маркер перед JSON.stringify
+        jsonReadyPhrases[key] = value.replace(/\\n/g, '[[NEWLINE]]')
+      } else {
+        jsonReadyPhrases[key] = value
+      }
     })
 
-    // JSON.stringify сам экранирует кавычки и специальные символы
-    const json = JSON.stringify(escapedPhrases, null, autoFormat.value ? 2 : 0)
+    // Создаем JSON
+    let json = JSON.stringify(jsonReadyPhrases, null, autoFormat.value ? 2 : 0)
 
-    // После stringify нужно восстановить \n
-    const cleanJson = json.replace(/\\n/g, '\\\\n') // Делаем \\n для отображения
-        .replace(/"\\\\n"/g, '"\\n"') // Но внутри строк оставляем \n
+    // Восстанавливаем \n из маркера
+    json = json.replace(/"\[\[NEWLINE\]\]"/g, '"\\\\n"')
+        .replace(/\[\[NEWLINE\]\]/g, '\\\\n')
 
-    jsonText.value = cleanJson
-    lastValidJson.value = cleanJson
+    jsonText.value = json
+    lastValidJson.value = json
     isJsonValid.value = true
     jsonStatusMessage.value = `JSON валиден. Фраз: ${Object.keys(phrases.value).length}`
   } catch (error) {
@@ -432,15 +438,16 @@ const handleTextChange = () => {
 
 const handleJsonChange = () => {
   try {
-    // JSON.parse сам уберет экранирование
-    const parsed = JSON.parse(jsonText.value)
+    // Заменяем \\n на маркер перед парсингом
+    const jsonWithMarkers = jsonText.value.replace(/\\\\n/g, '[[NEWLINE]]')
+
+    const parsed = JSON.parse(jsonWithMarkers)
 
     const processedPhrases = {}
     Object.entries(parsed).forEach(([key, value]) => {
       if (typeof value === 'string') {
-        // После парсинга JSON, \n уже как перенос строки
-        // Нужно сохранить его как строку с \n
-        processedPhrases[key] = value.replace(/\n/g, '\\n')
+        // Восстанавливаем \n из маркера
+        processedPhrases[key] = value.replace(/\[\[NEWLINE\]\]/g, '\\n')
       } else {
         processedPhrases[key] = value
       }
