@@ -359,14 +359,14 @@ const isInitialData = computed(() => {
 // Методы
 const convertNewlines = (text) => {
   if (!text) return ''
+  // Только заменяем \n на переносы строк, кавычки оставляем как есть
   return text.replace(/\\n/g, '\n')
 }
 
 const convertToNewlines = (text) => {
   if (!text) return ''
-  return text
-      .replace(/\n/g, '\\n')
-      .replace(/"/g, '\\"')
+  // Только переносы строк в \n, кавычки НЕ экранируем здесь
+  return text.replace(/\n/g, '\\n')
 }
 
 const truncateText = (text) => {
@@ -410,10 +410,10 @@ const updateJsonText = () => {
 const escapeForJson = (value) => {
   if (typeof value !== 'string') return value
 
-  // Экранируем кавычки, но сохраняем \n как одиночный обратный слеш + n
+  // Экранируем кавычки для JSON
   return value
       .replace(/\\"/g, '"') // Сначала убираем существующие экранирования
-      .replace(/"/g, '\\"') // Экранируем кавычки
+      .replace(/"/g, '\\"') // Экранируем кавычки для JSON
       .replace(/\n/g, '\\n') // Сохраняем переносы строк
 }
 
@@ -428,13 +428,13 @@ const handleJsonChange = () => {
     const parsed = JSON.parse(jsonText.value)
 
     // При парсинге JSON, \n автоматически преобразуется в перенос строки
-    // Нам нужно сохранить его как строку с \n
+    // Кавычки уже экранированы в JSON
     const processedPhrases = {}
     Object.entries(parsed).forEach(([key, value]) => {
       if (typeof value === 'string') {
         processedPhrases[key] = value
             .replace(/\n/g, '\\n') // Сохраняем переносы строк
-            .replace(/"/g, '\\"') // Экранируем кавычки
+        // Кавычки НЕ трогаем - они уже экранированы в JSON
       } else {
         processedPhrases[key] = value
       }
@@ -705,9 +705,11 @@ const renderWhatsAppPreview = (text) => {
   // Курсив: _текст_ → <em>текст</em>
   rendered = rendered.replace(/_(.*?)_/g, '<em>$1</em>')
 
-  // Экранированные символы: \* → *, \_ → _
+  // Экранированные символы WhatsApp: \* → *, \_ → _
   rendered = rendered.replace(/\\\*/g, '*')
   rendered = rendered.replace(/\\_/g, '_')
+
+  // Кавычки оставляем как есть (не экранируем)
 
   return rendered
 }
