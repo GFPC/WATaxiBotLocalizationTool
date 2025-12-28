@@ -696,33 +696,174 @@ const applyFormat = (formatType) => {
 const renderWhatsAppPreview = (text) => {
   if (!text) return ''
 
-  // Создаем копию текста для обработки
   let rendered = text
 
-  // 1. Сначала обрабатываем экранированные символы
-  rendered = rendered.replace(/\\\*/g, '⭐') // временная замена для экранированных *
-  rendered = rendered.replace(/\\_/g, '⏺️') // временная замена для экранированных _
+  // 1. Экранированные символы
+  rendered = rendered.replace(/\\\*/g, '⭐')
+  rendered = rendered.replace(/\\_/g, '⏺️')
 
-  // 2. Обработка самого внутреннего форматирования - жирный текст
-  // Ищем *текст* который НЕ окружен _
-  rendered = rendered.replace(
-      /(?<!_)\*([^*\n]+?)\*(?!_)/g,
-      '<strong>$1</strong>'
-  )
+  // 2. Функция для определения, является ли текст формулой
+  const isFormula = (str) => {
+    // Если строка содержит только цифры, операторы, пробелы и скобки
+    if (/^[\d\s\+\-\*\/\(\)\.]+$/.test(str)) {
+      // Но если это просто число, не считать формулой
+      if (/^\d+$/.test(str)) return false
+      // Если есть хотя бы один оператор и одна цифра - это формула
+      if (/[\+\-\*\/]/.test(str) && /\d/.test(str)) return true
+    }
+    return false
+  }
 
-  // 3. Обработка вложенного жирного текста внутри курсива
-  // Ищем _*текст*_ (жирный внутри курсива)
-  rendered = rendered.replace(
-      /_\*([^*\n]+?)\*_/g,
-      '<em><strong>$1</strong></em>'
-  )
+  // 3. Обрабатываем вложенное форматирование: _*текст*_
+  // Используем более сложный алгоритм для правильного определения границ
 
-  // 4. Обработка курсива
-  // Ищем _текст_ который НЕ содержит * внутри (уже обработали вложенные случаи)
-  rendered = rendered.replace(
-      /(?<!\*)_([^_\n]+?)_(?!\*)/g,
-      '<em>$1</em>'
-  )
+  // Сначала находим все звездочки
+  const asteriskPositions = []
+  for (let i = 0; i < rendered.length; i++) {
+    if (rendered[i] === '*') asteriskPositions.push(i)
+  }
+
+  // Обрабатываем пары звездочек
+  const processedStars = new Set()
+
+  for (let i = 0; i < asteriskPositions.length; i++) {
+    if (processedStars.has(asteriskPositions[i])) continue
+
+    const start = asteriskPositions[i]
+
+    // Ищем соответствующую закрывающую звездочку
+    for (let j = i + 1; j < asteriskPositions.length; j++) {
+      const end = asteriskPositions[j]
+
+      // Проверяем, что между ними есть текст
+      if (start + 1 >= end) continue
+
+      const content = rendered.substring(start + 1, end)
+
+      // Проверяем контекст:
+      const charBefore = start > 0 ? rendered[start - 1] : ''
+      const charAfter = end < rendered.length - 1 ? rendered[end + 1] : ''
+
+      // Если звездочки внутри формулы - пропускаем
+      // Проверяем, окружены ли они цифрами или операторами
+      const isInFormulaContext =
+          (/[\d\s]/.test(charBefore) || charBefore === '' || /[\(\)\*\/\+\-]/.test(charBefore)) &&
+          (/[\d\s]/.test(charAfter) || charAfter === '' || /[\(\)\*\/\+\-]/.test(charAfter))
+
+      if (isInFormulaContext && isFormula(content)) {
+        // Это часть формулы, пропускаем
+        processedStars.add(start)
+        processedStars.add(end)
+        break
+      }
+
+      // Проверяем, не находится ли это внутри _ _ (курсив с жирным)
+      let isInsideItalic = false
+      let underscoreBefore = -1
+      let underscoreAfter = -1
+
+      // Ищем _ перед *
+      for (let k = start - 1; k >= 0; k--) {
+        if (rendered[k] === '_') {
+          underscoreBefore = k
+          break
+        } else if (rendered[k] !== ' ') {
+          break
+        }
+      }
+
+      // Ищем _ после *
+      for (let k = end + 1; k < rendered.length; k++) {
+        if (rendered[k] === '_') {
+          underscoreAfter = k
+          break
+        } else if (rendered[k] !== ' ') {
+          break
+        }
+      }
+
+      if (underscoreBefore >= 0 && underscoreAfter >= 0) {
+        // Это _*текст*_ - вложенное форматирование
+        const italicContent = rendered.substring(underscoreBefore + 1, underscoreAfter)
+        if (italicContent.startsWith('*') && italicContent.endsWith('*')) {
+          const innerContent = italicContent.substring(1, italicContent.length - 1)
+          const replacement = `<em><strong>${innerContent}</strong></em>`
+
+          // Заменяем _*текст*_
+          rendered = rendered.substring(0, underscoreBefore) +
+              replacement +
+              rendered.substring(underscoreAfter + 1)
+
+          // Обновляем индексы
+          asteriskPositions.splice(i, 2)
+          processedStars.add(start)
+          processedStars.add(end)
+          i-- // уменьшаем i т.к. массив изменился
+          break
+        }
+      } else {
+        // Обычное жирное форматирование *текст*
+        // Проверяем, не форматируется ли уже этот диапазон
+        const isAlreadyFormatted = rendered.substring(start, end + 1).includes('<strong>')
+
+        if (!isAlreadyFormatted) {
+          const replacement = `<strong>${content}</strong>`
+          rendered = rendered.substring(0, start) +
+              replacement +
+              rendered.substring(end + 1)
+
+          processedStars.add(start)
+          processedStars.add(end)
+          break
+        }
+      }
+    }
+  }
+
+  // 4. Теперь обрабатываем курсив (после того как жирный обработан)
+  const underscorePositions = []
+  for (let i = 0; i < rendered.length; i++) {
+    if (rendered[i] === '_') underscorePositions.push(i)
+  }
+
+  const processedUnderscores = new Set()
+
+  for (let i = 0; i < underscorePositions.length; i++) {
+    if (processedUnderscores.has(underscorePositions[i])) continue
+
+    const start = underscorePositions[i]
+
+    for (let j = i + 1; j < underscorePositions.length; j++) {
+      const end = underscorePositions[j]
+
+      if (start + 1 >= end) continue
+
+      const content = rendered.substring(start + 1, end)
+
+      // Пропускаем если это уже часть тега
+      if (content.includes('<em>') || content.includes('</em>') ||
+          content.includes('<strong>') || content.includes('</strong>')) {
+        continue
+      }
+
+      // Проверяем, не является ли это формулой
+      if (isFormula(content)) {
+        processedUnderscores.add(start)
+        processedUnderscores.add(end)
+        break
+      }
+
+      // Обычный курсив
+      const replacement = `<em>${content}</em>`
+      rendered = rendered.substring(0, start) +
+          replacement +
+          rendered.substring(end + 1)
+
+      processedUnderscores.add(start)
+      processedUnderscores.add(end)
+      break
+    }
+  }
 
   // 5. Восстанавливаем экранированные символы
   rendered = rendered.replace(/⭐/g, '*')
@@ -733,6 +874,7 @@ const renderWhatsAppPreview = (text) => {
 
   return rendered
 }
+
 
 // Инициализация
 onMounted(() => {
