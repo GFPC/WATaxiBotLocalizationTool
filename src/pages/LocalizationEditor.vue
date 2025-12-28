@@ -696,183 +696,117 @@ const applyFormat = (formatType) => {
 const renderWhatsAppPreview = (text) => {
   if (!text) return ''
 
-  let rendered = text
+  // Создаем копию для обработки
+  let result = text
 
-  // 1. Экранированные символы
-  rendered = rendered.replace(/\\\*/g, '⭐')
-  rendered = rendered.replace(/\\_/g, '⏺️')
+  // 1. Заменяем экранированные символы на уникальные маркеры
+  result = result.replace(/\\\\/g, 'DOUBLE_BACKSLASH')
+      .replace(/\\\*/g, 'ESCAPED_STAR')
+      .replace(/\\_/g, 'ESCAPED_UNDER')
 
-  // 2. Функция для определения, является ли текст формулой
-  const isFormula = (str) => {
-    // Если строка содержит только цифры, операторы, пробелы и скобки
-    if (/^[\d\s\+\-\*\/\(\)\.]+$/.test(str)) {
-      // Но если это просто число, не считать формулой
-      if (/^\d+$/.test(str)) return false
-      // Если есть хотя бы один оператор и одна цифра - это формула
-      if (/[\+\-\*\/]/.test(str) && /\d/.test(str)) return true
+  // 2. Убираем лишние пробелы для упрощения обработки
+  const original = result
+
+  // 3. Парсим вручную
+  let output = ''
+  let i = 0
+
+  while (i < original.length) {
+    // Проверяем паттерн _*...*_
+    if (original.substring(i, i + 2) === '_*') {
+      // Ищем закрывающий *_
+      let j = i + 2
+      let found = false
+
+      while (j < original.length - 1) {
+        if (original.substring(j, j + 2) === '*_') {
+          const content = original.substring(i + 2, j)
+          output += `<em><strong>${content}</strong></em>`
+          i = j + 2
+          found = true
+          break
+        }
+        j++
+      }
+
+      if (found) continue
     }
-    return false
-  }
 
-  // 3. Обрабатываем вложенное форматирование: _*текст*_
-  // Используем более сложный алгоритм для правильного определения границ
+    // Проверяем паттерн *...* (жирный)
+    if (original[i] === '*') {
+      // Ищем следующую звездочку
+      let j = i + 1
+      let found = false
 
-  // Сначала находим все звездочки
-  const asteriskPositions = []
-  for (let i = 0; i < rendered.length; i++) {
-    if (rendered[i] === '*') asteriskPositions.push(i)
-  }
-
-  // Обрабатываем пары звездочек
-  const processedStars = new Set()
-
-  for (let i = 0; i < asteriskPositions.length; i++) {
-    if (processedStars.has(asteriskPositions[i])) continue
-
-    const start = asteriskPositions[i]
-
-    // Ищем соответствующую закрывающую звездочку
-    for (let j = i + 1; j < asteriskPositions.length; j++) {
-      const end = asteriskPositions[j]
-
-      // Проверяем, что между ними есть текст
-      if (start + 1 >= end) continue
-
-      const content = rendered.substring(start + 1, end)
-
-      // Проверяем контекст:
-      const charBefore = start > 0 ? rendered[start - 1] : ''
-      const charAfter = end < rendered.length - 1 ? rendered[end + 1] : ''
-
-      // Если звездочки внутри формулы - пропускаем
-      // Проверяем, окружены ли они цифрами или операторами
-      const isInFormulaContext =
-          (/[\d\s]/.test(charBefore) || charBefore === '' || /[\(\)\*\/\+\-]/.test(charBefore)) &&
-          (/[\d\s]/.test(charAfter) || charAfter === '' || /[\(\)\*\/\+\-]/.test(charAfter))
-
-      if (isInFormulaContext && isFormula(content)) {
-        // Это часть формулы, пропускаем
-        processedStars.add(start)
-        processedStars.add(end)
-        break
+      while (j < original.length) {
+        if (original[j] === '*') {
+          const content = original.substring(i + 1, j)
+          // Проверяем, не является ли это формулой
+          if (!isMathExpression(content)) {
+            output += `<strong>${content}</strong>`
+            i = j + 1
+            found = true
+            break
+          }
+        }
+        j++
       }
 
-      // Проверяем, не находится ли это внутри _ _ (курсив с жирным)
-      let isInsideItalic = false
-      let underscoreBefore = -1
-      let underscoreAfter = -1
-
-      // Ищем _ перед *
-      for (let k = start - 1; k >= 0; k--) {
-        if (rendered[k] === '_') {
-          underscoreBefore = k
-          break
-        } else if (rendered[k] !== ' ') {
-          break
-        }
-      }
-
-      // Ищем _ после *
-      for (let k = end + 1; k < rendered.length; k++) {
-        if (rendered[k] === '_') {
-          underscoreAfter = k
-          break
-        } else if (rendered[k] !== ' ') {
-          break
-        }
-      }
-
-      if (underscoreBefore >= 0 && underscoreAfter >= 0) {
-        // Это _*текст*_ - вложенное форматирование
-        const italicContent = rendered.substring(underscoreBefore + 1, underscoreAfter)
-        if (italicContent.startsWith('*') && italicContent.endsWith('*')) {
-          const innerContent = italicContent.substring(1, italicContent.length - 1)
-          const replacement = `<em><strong>${innerContent}</strong></em>`
-
-          // Заменяем _*текст*_
-          rendered = rendered.substring(0, underscoreBefore) +
-              replacement +
-              rendered.substring(underscoreAfter + 1)
-
-          // Обновляем индексы
-          asteriskPositions.splice(i, 2)
-          processedStars.add(start)
-          processedStars.add(end)
-          i-- // уменьшаем i т.к. массив изменился
-          break
-        }
-      } else {
-        // Обычное жирное форматирование *текст*
-        // Проверяем, не форматируется ли уже этот диапазон
-        const isAlreadyFormatted = rendered.substring(start, end + 1).includes('<strong>')
-
-        if (!isAlreadyFormatted) {
-          const replacement = `<strong>${content}</strong>`
-          rendered = rendered.substring(0, start) +
-              replacement +
-              rendered.substring(end + 1)
-
-          processedStars.add(start)
-          processedStars.add(end)
-          break
-        }
-      }
+      if (found) continue
     }
-  }
 
-  // 4. Теперь обрабатываем курсив (после того как жирный обработан)
-  const underscorePositions = []
-  for (let i = 0; i < rendered.length; i++) {
-    if (rendered[i] === '_') underscorePositions.push(i)
-  }
+    // Проверяем паттерн _..._ (курсив)
+    if (original[i] === '_') {
+      // Ищем следующее подчеркивание
+      let j = i + 1
+      let found = false
 
-  const processedUnderscores = new Set()
-
-  for (let i = 0; i < underscorePositions.length; i++) {
-    if (processedUnderscores.has(underscorePositions[i])) continue
-
-    const start = underscorePositions[i]
-
-    for (let j = i + 1; j < underscorePositions.length; j++) {
-      const end = underscorePositions[j]
-
-      if (start + 1 >= end) continue
-
-      const content = rendered.substring(start + 1, end)
-
-      // Пропускаем если это уже часть тега
-      if (content.includes('<em>') || content.includes('</em>') ||
-          content.includes('<strong>') || content.includes('</strong>')) {
-        continue
+      while (j < original.length) {
+        if (original[j] === '_') {
+          const content = original.substring(i + 1, j)
+          // Проверяем, не является ли это формулой
+          if (!isMathExpression(content)) {
+            output += `<em>${content}</em>`
+            i = j + 1
+            found = true
+            break
+          }
+        }
+        j++
       }
 
-      // Проверяем, не является ли это формулой
-      if (isFormula(content)) {
-        processedUnderscores.add(start)
-        processedUnderscores.add(end)
-        break
-      }
-
-      // Обычный курсив
-      const replacement = `<em>${content}</em>`
-      rendered = rendered.substring(0, start) +
-          replacement +
-          rendered.substring(end + 1)
-
-      processedUnderscores.add(start)
-      processedUnderscores.add(end)
-      break
+      if (found) continue
     }
+
+    // Обычный символ
+    output += original[i]
+    i++
   }
 
-  // 5. Восстанавливаем экранированные символы
-  rendered = rendered.replace(/⭐/g, '*')
-  rendered = rendered.replace(/⏺️/g, '_')
+  // 4. Восстанавливаем экранированные символы
+  output = output.replace(/ESCAPED_STAR/g, '*')
+      .replace(/ESCAPED_UNDER/g, '_')
+      .replace(/DOUBLE_BACKSLASH/g, '\\\\')
 
-  // 6. Обработка переносов строк
-  rendered = rendered.replace(/\n/g, '<br>')
+  // 5. Переносы строк
+  output = output.replace(/\n/g, '<br>')
 
-  return rendered
+  return output
+}
+
+// Функция проверки математического выражения
+const isMathExpression = (text) => {
+  // Убираем пробелы для проверки
+  const trimmed = text.replace(/\s/g, '')
+
+  // Если содержит только цифры и операторы
+  if (/^[\d\+\-\*\/\(\)\.]+$/.test(trimmed)) {
+    // Должно быть хотя бы 2 числа и оператор
+    const numbers = trimmed.split(/[\+\-\*\/]/)
+    return numbers.length >= 2 && numbers.every(n => n.length > 0)
+  }
+
+  return false
 }
 
 
