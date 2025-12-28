@@ -696,20 +696,70 @@ const applyFormat = (formatType) => {
 const renderWhatsAppPreview = (text) => {
   if (!text) return ''
 
-  // Заменяем WhatsApp форматирование на HTML теги для предпросмотра
+  // Создаем копию текста для обработки
   let rendered = text
 
+  // Экранированные символы - заменяем их сначала
+  rendered = rendered.replace(/\\\*/g, '⭐') // временная замена для экранированных *
+  rendered = rendered.replace(/\\_/g, '⏺️') // временная замена для экранированных _
+
+  // Сложное регулярное выражение для поиска *жирного* текста
+  // Условия:
+  // 1. * должен быть на границе слова (предыдущий символ - пробел, начало строки или пунктуация)
+  // 2. Внутри должны быть буквы или цифры (не только математические выражения)
+  // 3. Не должен быть частью математического выражения
+
   // Жирный текст: *текст* → <strong>текст</strong>
-  rendered = rendered.replace(/\*(.*?)\*/g, '<strong>$1</strong>')
+  rendered = rendered.replace(
+      /(^|[^\w\*])\*([^\s\*].*?[^\s\*])\*([^\w\*]|$)/g,
+      function(match, before, content, after) {
+        // Проверяем, не является ли это математическим выражением
+        // Если внутри только цифры, операторы и пробелы - это скорее формула
+        const isMathExpression = /^[\d\s\+\-\/\*\(\)\.]+$/.test(content)
+
+        if (isMathExpression) {
+          // Возвращаем как есть, но без форматирования
+          return before + '*' + content + '*' + after
+        }
+
+        // Проверяем, есть ли внутри обычный текст
+        const hasText = /[а-яА-Яa-zA-Z]/.test(content)
+
+        if (hasText) {
+          return before + '<strong>' + content + '</strong>' + after
+        } else {
+          return before + '*' + content + '*' + after
+        }
+      }
+  )
 
   // Курсив: _текст_ → <em>текст</em>
-  rendered = rendered.replace(/_(.*?)_/g, '<em>$1</em>')
+  rendered = rendered.replace(
+      /(^|[^\w_])\_([^\s_].*?[^\s_])\_([^\w_]|$)/g,
+      function(match, before, content, after) {
+        // Проверяем, не является ли это математическим выражением
+        const isMathExpression = /^[\d\s\+\-\/\*\(\)\.]+$/.test(content)
 
-  // Экранированные символы WhatsApp: \* → *, \_ → _
-  rendered = rendered.replace(/\\\*/g, '*')
-  rendered = rendered.replace(/\\_/g, '_')
+        if (isMathExpression) {
+          return before + '_' + content + '_' + after
+        }
 
-  // Кавычки оставляем как есть (не экранируем)
+        const hasText = /[а-яА-Яa-zA-Z]/.test(content)
+
+        if (hasText) {
+          return before + '<em>' + content + '</em>' + after
+        } else {
+          return before + '_' + content + '_' + after
+        }
+      }
+  )
+
+  // Восстанавливаем экранированные символы
+  rendered = rendered.replace(/⭐/g, '*')
+  rendered = rendered.replace(/⏺️/g, '_')
+
+  // Обработка переносов строк
+  rendered = rendered.replace(/\n/g, '<br>')
 
   return rendered
 }
