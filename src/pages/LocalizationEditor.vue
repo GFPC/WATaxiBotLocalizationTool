@@ -66,14 +66,33 @@
 
             <template v-else>
               <div
-                  v-for="phrase in filteredPhrases"
+                  v-for="(phrase, index) in filteredPhrases"
                   :key="phrase.key"
                   :class="[
-          'phrase-item',
-          activeKey === phrase.key ? 'phrase-item-active' : ''
-        ]"
+              'phrase-item',
+              activeKey === phrase.key ? 'phrase-item-active' : ''
+            ]"
                   @click="selectPhrase(phrase.key)"
               >
+                <!-- Добавляем номер -->
+                <div class="phrase-header">
+                  <span class="phrase-number">{{ index + 1 }}</span>
+                  <button
+                      class="copy-key-btn"
+                      @click.stop="copyPhraseKey(phrase.key, $event)"
+                      :title="`Копировать ключ: ${phrase.key}`"
+                  >
+                    <svg v-if="copiedKey !== phrase.key" class="copy-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                    </svg>
+                    <!-- Иконка галочки -->
+                    <svg v-else class="check-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="20 6 9 17 4 12"></polyline>
+                    </svg>
+                  </button>
+                </div>
+
                 <div class="phrase-key">{{ phrase.key }}</div>
                 <div class="phrase-preview">
                   {{ truncateText(phrase.value) }}
@@ -279,7 +298,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, nextTick } from 'vue'
+import {ref, computed, watch, onMounted, nextTick, onUnmounted} from 'vue'
 
 // Props
 const props = defineProps({
@@ -310,6 +329,12 @@ const selectedText = ref({
   start: 0,
   end: 0,
   text: ''
+})
+
+onUnmounted(() => {
+  if (copyTimeout.value) {
+    clearTimeout(copyTimeout.value)
+  }
 })
 
 // Вычисляемые свойства
@@ -357,6 +382,11 @@ const currentPreview = computed(() => {
 const isInitialData = computed(() => {
   return JSON.stringify(phrases.value) === JSON.stringify(props.initialData)
 })
+
+const copiedKey = ref(null)
+const copyTimeout = ref(null)
+
+// Обновите метод copyPhraseKey:
 
 // Методы
 const truncateText = (text) => {
@@ -878,6 +908,44 @@ const isMathExpression = (text) => {
 
   return false
 }
+
+const copyPhraseKey = async (key, event) => {
+  // Очищаем предыдущий таймаут
+  if (copyTimeout.value) {
+    clearTimeout(copyTimeout.value)
+  }
+
+  try {
+    await navigator.clipboard.writeText(key)
+
+    // Устанавливаем текущий скопированный ключ
+    copiedKey.value = key
+
+    // Сбрасываем через 3 секунды
+    copyTimeout.value = setTimeout(() => {
+      copiedKey.value = null
+    }, 3000)
+
+  } catch (err) {
+    // Fallback для старых браузеров
+    const textArea = document.createElement('textarea')
+    textArea.value = key
+    document.body.appendChild(textArea)
+    textArea.select()
+    document.execCommand('copy')
+    document.body.removeChild(textArea)
+
+    // Все равно показываем галочку
+    copiedKey.value = key
+    copyTimeout.value = setTimeout(() => {
+      copiedKey.value = null
+    }, 3000)
+  }
+
+  // Останавливаем всплытие события
+  event.stopPropagation()
+}
+
 
 
 
@@ -1543,5 +1611,114 @@ watch(autoFormat, (newVal) => {
   font-size: 14px;
   line-height: 1.5;
   max-width: 300px;
+}
+
+
+.phrase-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.phrase-number {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+  background: #f3f4f6;
+  padding: 2px 8px;
+  border-radius: 12px;
+  min-width: 28px;
+  text-align: center;
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+}
+
+.copy-key-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  color: #9ca3af;
+}
+
+.copy-key-btn:hover {
+  background: #f3f4f6;
+  color: #6b7280;
+  transform: translateY(-1px);
+}
+
+.copy-key-btn:active {
+  transform: translateY(0);
+}
+
+.copy-icon, .check-icon {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.check-icon {
+  stroke: #10b981;
+}
+
+.phrase-item-active .phrase-number {
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+}
+
+.phrase-item-active .copy-key-btn {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.phrase-item-active .copy-key-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+}
+
+.phrase-item-active .check-icon {
+  stroke: #a7f3d0;
+}
+
+/* Анимация для галочки */
+@keyframes checkmark {
+  0% {
+    stroke-dasharray: 0, 100;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 100, 0;
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dasharray: 100, 0;
+    stroke-dashoffset: 0;
+  }
+}
+
+.check-icon polyline {
+  animation: checkmark 0.5s cubic-bezier(0.65, 0, 0.45, 1) forwards;
+  stroke-dasharray: 100, 100;
+  stroke-dashoffset: 100;
+}
+
+/* Анимация для копирования */
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(0.9);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.copy-key-btn:active svg {
+  animation: pulse 0.3s ease;
 }
 </style>
